@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pickle
 
@@ -81,6 +83,9 @@ class State:
         # init p1 plays first
         self.playerSymbol = 1
 
+    def get_moves(self):
+        return np.sum(np.abs(self.board))
+
     # get unique hash of current board state
     def getHash(self):
         self.boardHash = str(self.board.reshape(BOARD_COLS * BOARD_ROWS))
@@ -158,10 +163,22 @@ class State:
         self.playerSymbol = 1
 
     def play(self, rounds=100):
-        for i in tqdm(range(rounds)):
+        self.data_winner = np.zeros(rounds)
+        self.data_moves = np.zeros(rounds)
+
+        pbar = tqdm(range(rounds))
+        for i in pbar:
+            if i % 100 == 0 and i > 1000:
+                last_p1_wins = np.sum(self.data_winner[i - 1000 : i] == 1)
+                last_p2_wins = np.sum(self.data_winner[i - 1000 : i] == -1)
+                last_draws = np.sum(self.data_winner[i - 1000 : i] == 0)
+                avg_moves = np.mean(self.data_moves[i - 1000 : i])
+                msg = f"P1: {last_p1_wins} / P2: {last_p2_wins} / Draw: {last_draws} ||| Moves: {avg_moves}"
+                pbar.set_description(msg)
             if i % 100000 == 0:
                 # print("Rounds {}".format(i))
                 self.p1.savePolicy(f"snapshot_{i}")
+
             while not self.isEnd:
                 # Player 1
                 positions = self.availablePositions()
@@ -176,12 +193,17 @@ class State:
 
                 win = self.winner()
                 if win is not None:
+
+                    self.data_winner[i] = win
+                    self.data_moves[i] = np.abs(self.board).sum()
+
                     # self.showBoard()
                     # ended with p1 either win or draw
                     self.giveReward()
                     self.p1.reset()
                     self.p2.reset()
                     self.reset()
+
                     break
 
                 else:
@@ -196,6 +218,10 @@ class State:
 
                     win = self.winner()
                     if win is not None:
+
+                        self.data_winner[i] = win
+                        self.data_moves[i] = np.abs(self.board).sum()
+
                         # self.showBoard()
                         # ended with p2 either win or draw
                         self.giveReward()
@@ -280,6 +306,49 @@ class HumanPlayer:
         pass
 
 
+def show_state_value(state_value: tuple[str, float]):
+    state = np.fromstring(state_value[0][1:-1], sep=" ").reshape(3, 3)
+    value = state_value[1]
+    board = state
+    print("")
+    print(value)
+    for i in range(0, BOARD_ROWS):
+        print("-------------")
+        out = "| "
+        for j in range(0, BOARD_COLS):
+            if board[i, j] == 1:
+                token = "x"
+            if board[i, j] == -1:
+                token = "o"
+            if board[i, j] == 0:
+                token = " "
+            out += token + " | "
+        print(out)
+    print("-------------")
+    print("")
+
+
+def show_top_state_value_pairs(svp: dict, moves=0, top=5):
+    states = np.array(list(svp.keys()))
+    values = np.array(list(svp.values()))
+
+    indices = np.argsort(values)
+
+    if top > 0:
+        indices = indices[::-1]
+
+    sorted_states = states[indices]
+    sorted_values = values[indices]
+
+    if moves > 0:
+        mask = [True if state.count('1') == moves else False for state in sorted_states]
+        sorted_states = sorted_states[mask]
+        sorted_values = sorted_values[mask]
+
+    for i in range(abs(top)):
+        show_state_value((sorted_states[i], sorted_values[i]))
+
+
 if __name__ == "__main__":
     # training
     p1 = Player("p1")
@@ -289,6 +358,9 @@ if __name__ == "__main__":
     print("training...")
     st.play(5_000_000)
 
+    np.save("data_winner", st.data_winner)
+    np.save("data_moves", st.data_moves)
+
     p1.savePolicy()
     p2.savePolicy()
 
@@ -297,6 +369,8 @@ elif __name__ == "__sub__":
     # play with human
     p1 = Player("computer", exp_rate=0)
     p1.loadPolicy("policy_p1")
+
+    show_top_state_value_pairs(p1.states_value, moves=3, top=5)
 
     p2 = HumanPlayer("human")
 
