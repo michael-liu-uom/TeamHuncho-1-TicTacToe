@@ -1,0 +1,14 @@
+# temporary directory created by IDEs
+**/.idea/
+**/__pycache__/
+**/dask-worker-space/
+*-checkpoint.*
+
+# temporary files created by user
+__test*.py
+__temp*.py
+
+
+# temporary files create by other software
+~*
+
